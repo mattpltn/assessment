@@ -28,10 +28,19 @@ Practically this means:
   change another item's Outcome C even though none of its own answers
   changed.
 
-**This should be fixed** by blending each item against its own Score A and
-group-B scores (look up by identity, not by sort position). That is a
-one-line change: in `evaluate_batch()` (`src/scoring/pipeline.py`), replace
-the `blend_source[i]` lookup with `(items[i]["score_a"],
-items[i]["group_b_scores"])` directly, and the `order`/`blend_source`
-machinery can be deleted entirely. Left as-is for now so the two
-implementations are directly comparable against the same reference data.
+**The fix** is to blend each item against its own Score A and group-B
+scores (look up by identity, not by sort position) instead. This is now
+available as an opt-in rather than the default, so the two behaviors stay
+directly comparable against the same reference data:
+
+- Python: `evaluate_batch(model, answer_rows, fixed=True)`
+  (`src/scoring/pipeline.py`).
+- JS: `Scoring.evaluateBatch(model, answerRows, { useOwnBlend: true })`
+  (`docs/scoring.js`).
+- Web demo: after scoring a file, click **"Bug fix version 2"** to render a
+  second results table underneath using the corrected blend, so both can
+  be compared side by side for the same upload.
+
+The default behavior (no flag/option passed) is unchanged -- still
+reproduces the reference model's quirk exactly, which is what the
+golden-value test in `tests/test_pipeline.py` checks against.

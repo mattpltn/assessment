@@ -146,21 +146,28 @@ def _score_one(model: Model, answers: dict[str, object]) -> dict:
     }
 
 
-def evaluate_batch(model: Model, answer_rows: list[dict[str, object]]) -> list[dict]:
+def evaluate_batch(model: Model, answer_rows: list[dict[str, object]], fixed: bool = False) -> list[dict]:
     """Score every row in ``answer_rows`` and return one result dict each.
 
     Score A and Score B are computed independently per row -- order never
     matters for those. Outcome C is batch-dependent: see KNOWN_ISSUES.md.
-    This reproduces that behavior on purpose (replicating the reference
-    model exactly) rather than fixing it; scoring a single row in isolation
-    sidesteps the issue since there is nothing else to reorder against.
+    By default this reproduces that behavior on purpose (replicating the
+    reference model exactly) rather than fixing it. Pass ``fixed=True`` to
+    get the corrected behavior instead -- each item blended against its own
+    Score A / group_b scores, not a sort position. Scoring a single row in
+    isolation sidesteps the issue either way, since there is nothing else
+    to reorder against.
     """
     items = [_score_one(model, answers) for answers in answer_rows]
 
-    # Mirrors the reference model's own re-sorting of this intermediate
-    # table by Score B, descending, before it is read back by position.
-    order = sorted(range(len(items)), key=lambda i: items[i]["score_b"], reverse=True)
-    blend_source = [(items[i]["score_a"], items[i]["group_b_scores"]) for i in order]
+    if fixed:
+        blend_source = [(item["score_a"], item["group_b_scores"]) for item in items]
+    else:
+        # Mirrors the reference model's own re-sorting of this intermediate
+        # table by Score B, descending, before it is read back by position.
+        order = sorted(range(len(items)), key=lambda i: items[i]["score_b"], reverse=True)
+        by_sort_position = [(items[i]["score_a"], items[i]["group_b_scores"]) for i in order]
+        blend_source = [by_sort_position[i] for i in range(len(items))]
 
     results = []
     for i, item in enumerate(items):

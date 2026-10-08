@@ -75,7 +75,20 @@
   </div>
 
   <div class="panel" id="results-panel" style="display:none;">
+    <strong>Results</strong>
     <table id="results-table">
+      <thead>
+        <tr><th>item_id</th><th>Score A</th><th>Score B</th><th>Outcome C</th><th>certainty</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button class="secondary" id="bugfix-btn" type="button" style="margin-top: 12px;">Bug fix version 2</button>
+    <p style="color: var(--muted); font-size: 0.8rem; margin: 6px 0 0;">Outcome C is normally blended using a batch-order-dependent quirk inherited from the reference model (see KNOWN_ISSUES.md). This shows what you'd get if each item were blended against its own values instead.</p>
+  </div>
+
+  <div class="panel" id="results-panel-2" style="display:none;">
+    <strong>Bug-fixed results</strong>
+    <table id="results-table-2">
       <thead>
         <tr><th>item_id</th><th>Score A</th><th>Score B</th><th>Outcome C</th><th>certainty</th></tr>
       </thead>
@@ -92,6 +105,8 @@
 <script>
 let model = null;
 let koboMap = null;
+let lastItemIds = null;
+let lastAnswerRows = null;
 
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/);
@@ -127,6 +142,20 @@ function renderResults(itemIds, results) {
     tbody.appendChild(tr);
   });
   document.getElementById("results-panel").style.display = "block";
+  // A fresh run invalidates any bug-fixed comparison table from before.
+  document.getElementById("results-panel-2").style.display = "none";
+}
+
+function renderFixedResults(itemIds, results) {
+  const tbody = document.querySelector("#results-table-2 tbody");
+  tbody.innerHTML = "";
+  itemIds.forEach((id, i) => {
+    const r = results[i];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${id}</td><td>${r.scoreA.toFixed(3)}</td><td>${r.scoreB.toFixed(3)}</td><td>${r.outcomeC}</td><td>${r.certainty.toFixed(3)}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("results-panel-2").style.display = "block";
 }
 
 function runCsv(text) {
@@ -174,6 +203,8 @@ function runCsv(text) {
     }
 
     const results = Scoring.evaluateBatch(model, answerRows);
+    lastItemIds = itemIds;
+    lastAnswerRows = answerRows;
     renderResults(itemIds, results);
   } catch (e) {
     showError(String(e.message || e));
@@ -198,6 +229,15 @@ document.getElementById("sample-btn").addEventListener("click", () => {
     .then((r) => r.text())
     .then(runCsv)
     .catch((e) => showError("Could not load sample.csv: " + e));
+});
+
+document.getElementById("bugfix-btn").addEventListener("click", () => {
+  if (!lastAnswerRows) {
+    showError("Run a scoring first, then click Bug fix version 2 to compare.");
+    return;
+  }
+  const fixedResults = Scoring.evaluateBatch(model, lastAnswerRows, { useOwnBlend: true });
+  renderFixedResults(lastItemIds, fixedResults);
 });
 </script>
 </body>
