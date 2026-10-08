@@ -96,12 +96,22 @@
     </table>
   </div>
 
+  <div class="panel" id="cf-panel" style="display:none;">
+    <strong>Fastest path to a different outcome</strong>
+    <p style="color: var(--muted); font-size: 0.8rem; margin: 6px 0 10px;">Pick an item and a target option to find the smallest set of answer changes that would flip Outcome C there.</p>
+    <label style="margin-right: 8px;">Item: <select id="cf-item"></select></label>
+    <label style="margin-right: 8px;">Target: <select id="cf-target"></select></label>
+    <button id="cf-run" type="button">Find minimal changes</button>
+    <div id="cf-output" style="margin-top: 12px; font-size: 0.9rem;"></div>
+  </div>
+
   <div class="panel" id="note-panel" style="display:none; color: var(--muted); font-size: 0.85rem;"></div>
   <div class="panel error" id="error-panel" style="display:none;"></div>
 </main>
 
 <script src="scoring.js"></script>
 <script src="kobo.js"></script>
+<script src="counterfactual.js"></script>
 <script>
 let model = null;
 let koboMap = null;
@@ -142,8 +152,21 @@ function renderResults(itemIds, results) {
     tbody.appendChild(tr);
   });
   document.getElementById("results-panel").style.display = "block";
-  // A fresh run invalidates any bug-fixed comparison table from before.
+  // A fresh run invalidates any bug-fixed comparison table / counterfactual
+  // search results from before.
   document.getElementById("results-panel-2").style.display = "none";
+  populateCfControls(itemIds);
+}
+
+function populateCfControls(itemIds) {
+  const itemSel = document.getElementById("cf-item");
+  itemSel.innerHTML = itemIds.map((id) => `<option value="${id}">${id}</option>`).join("");
+
+  const targetSel = document.getElementById("cf-target");
+  targetSel.innerHTML = model.options.map((o) => `<option value="${o.id}">${o.id}</option>`).join("");
+
+  document.getElementById("cf-output").innerHTML = "";
+  document.getElementById("cf-panel").style.display = "block";
 }
 
 function renderComparisonResults(itemIds, results) {
@@ -238,6 +261,44 @@ document.getElementById("bugfix-btn").addEventListener("click", () => {
   }
   const originalResults = Scoring.evaluateBatch(model, lastAnswerRows, { useOwnBlend: false });
   renderComparisonResults(lastItemIds, originalResults);
+});
+
+document.getElementById("cf-run").addEventListener("click", () => {
+  const itemId = document.getElementById("cf-item").value;
+  const targetOption = document.getElementById("cf-target").value;
+  const output = document.getElementById("cf-output");
+  const idx = lastItemIds.indexOf(itemId);
+  if (idx === -1) {
+    output.innerHTML = `<span class="error">Item not found.</span>`;
+    return;
+  }
+
+  output.textContent = "Searching...";
+  setTimeout(() => {
+    const answers = lastAnswerRows[idx];
+    const result = Counterfactual.findMinChanges(model, answers, targetOption, 3, 25);
+
+    if (result.depth === 0) {
+      output.innerHTML = `<em>${itemId} is already at ${targetOption}.</em>`;
+      return;
+    }
+    if (result.depth === null) {
+      output.innerHTML = `<em>${result.message}</em>`;
+      return;
+    }
+
+    const rows = result.solutions
+      .map(
+        (sol, i) =>
+          `<tr><td>${i + 1}</td><td>` +
+          sol.map((c) => `${c.fid}: ${JSON.stringify(c.oldRaw)}&rarr;${JSON.stringify(c.newRaw)} (${c.oldScore}&rarr;${c.newScore})`).join("<br>") +
+          `</td></tr>`
+      )
+      .join("");
+    output.innerHTML =
+      `<p><strong>Minimum changes needed: ${result.depth}</strong> (${result.solutions.length} way(s) found)</p>` +
+      `<table><thead><tr><th>#</th><th>Change(s)</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }, 10);
 });
 </script>
 </body>

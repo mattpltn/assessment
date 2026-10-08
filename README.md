@@ -96,3 +96,9 @@ deliberate, explicit choice to prioritize one-upload convenience over
 keeping that wording out of the public page -- everywhere else in this
 repo (`model/model.json`, the CSV format above, Score A/B/Outcome C
 themselves) stays fully anonymized.
+
+After scoring a file, the page also offers "Compare to original Excel tool
+(pre-fix)" (renders the pre-fix numbers in a second table, see
+`KNOWN_ISSUES.md`) and a "Fastest path to a different outcome" panel --
+pick an item and a target option to run the same minimal-change search as
+`scripts/counterfactual.py`, in the browser (`docs/counterfactual.js`).
