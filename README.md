@@ -14,8 +14,10 @@ machine learning, nothing probabilistic. Every weight, formula, and
 threshold lives in [`model/model.json`](model/model.json) as data; the code
 just applies it.
 
-See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) for an important caveat about
-Outcome C.
+A batch-order bug in how Outcome C was computed in the original Excel file
+has been found, proven, and fixed here (on by default) -- see
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) for the full writeup, including how to
+reproduce the original behavior for comparison.
 
 ## Structure
 

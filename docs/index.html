@@ -82,12 +82,12 @@
       </thead>
       <tbody></tbody>
     </table>
-    <button class="secondary" id="bugfix-btn" type="button" style="margin-top: 12px;">Bug fix version 2</button>
-    <p style="color: var(--muted); font-size: 0.8rem; margin: 6px 0 0;">Outcome C is normally blended using a batch-order-dependent quirk inherited from the reference model (see KNOWN_ISSUES.md). This shows what you'd get if each item were blended against its own values instead.</p>
+    <button class="secondary" id="bugfix-btn" type="button" style="margin-top: 12px;">Compare to original Excel tool (pre-fix)</button>
+    <p style="color: var(--muted); font-size: 0.8rem; margin: 6px 0 0;">The table above already uses the fixed logic -- Outcome C is blended against each item's own Score A / Score B, not a batch-order-dependent sort position. See KNOWN_ISSUES.md for the full writeup. Click the button to see what the original, unfixed Excel tool would have produced for this same upload.</p>
   </div>
 
   <div class="panel" id="results-panel-2" style="display:none;">
-    <strong>Bug-fixed results</strong>
+    <strong>Original Excel tool behavior (pre-fix, shown for reference)</strong>
     <table id="results-table-2">
       <thead>
         <tr><th>item_id</th><th>Score A</th><th>Score B</th><th>Outcome C</th><th>certainty</th></tr>
@@ -146,7 +146,7 @@ function renderResults(itemIds, results) {
   document.getElementById("results-panel-2").style.display = "none";
 }
 
-function renderFixedResults(itemIds, results) {
+function renderComparisonResults(itemIds, results) {
   const tbody = document.querySelector("#results-table-2 tbody");
   tbody.innerHTML = "";
   itemIds.forEach((id, i) => {
@@ -233,11 +233,11 @@ document.getElementById("sample-btn").addEventListener("click", () => {
 
 document.getElementById("bugfix-btn").addEventListener("click", () => {
   if (!lastAnswerRows) {
-    showError("Run a scoring first, then click Bug fix version 2 to compare.");
+    showError("Run a scoring first, then click Compare to see the original behavior.");
     return;
   }
-  const fixedResults = Scoring.evaluateBatch(model, lastAnswerRows, { useOwnBlend: true });
-  renderFixedResults(lastItemIds, fixedResults);
+  const originalResults = Scoring.evaluateBatch(model, lastAnswerRows, { useOwnBlend: false });
+  renderComparisonResults(lastItemIds, originalResults);
 });
 </script>
 </body>

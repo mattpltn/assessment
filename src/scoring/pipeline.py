@@ -146,17 +146,18 @@ def _score_one(model: Model, answers: dict[str, object]) -> dict:
     }
 
 
-def evaluate_batch(model: Model, answer_rows: list[dict[str, object]], fixed: bool = False) -> list[dict]:
+def evaluate_batch(model: Model, answer_rows: list[dict[str, object]], fixed: bool = True) -> list[dict]:
     """Score every row in ``answer_rows`` and return one result dict each.
 
     Score A and Score B are computed independently per row -- order never
-    matters for those. Outcome C is batch-dependent: see KNOWN_ISSUES.md.
-    By default this reproduces that behavior on purpose (replicating the
-    reference model exactly) rather than fixing it. Pass ``fixed=True`` to
-    get the corrected behavior instead -- each item blended against its own
-    Score A / group_b scores, not a sort position. Scoring a single row in
-    isolation sidesteps the issue either way, since there is nothing else
-    to reorder against.
+    matters for those. Outcome C's blend used to inherit a batch-order bug
+    from the reference model this was ported from -- see KNOWN_ISSUES.md
+    for the full writeup. That bug is fixed by default here: each item is
+    blended against its own Score A / group_b scores. Pass ``fixed=False``
+    to reproduce the original (buggy) reference-model behavior instead,
+    e.g. for side-by-side comparison. Scoring a single row in isolation
+    gives the same result either way, since there is nothing else to
+    reorder against.
     """
     items = [_score_one(model, answers) for answers in answer_rows]
 

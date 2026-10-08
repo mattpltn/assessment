@@ -25,16 +25,17 @@ def _load_rows():
 
 
 def test_golden_values_match_reference_model():
-    # Outcome C is intentionally batch-order-dependent -- see
-    # KNOWN_ISSUES.md -- so all three fixture rows must be scored together
-    # in their original order to reproduce the reference values exactly.
+    # fixed=False reproduces the original reference model byte-for-byte,
+    # including its batch-order-dependent Outcome C bug -- see
+    # KNOWN_ISSUES.md. All three fixture rows must be scored together in
+    # their original order to reproduce these exact reference values.
     model = Model.load(MODEL_PATH)
     rows = _load_rows()
     assert len(rows) == 3
 
     item_ids = [row.pop("item_id") for row in rows]
     answer_rows = [{k: v for k, v in row.items() if v != ""} for row in rows]
-    results = evaluate_batch(model, answer_rows)
+    results = evaluate_batch(model, answer_rows, fixed=False)
 
     for item_id, result in zip(item_ids, results):
         exp_a, exp_b, exp_c = EXPECTED[item_id]
@@ -43,23 +44,23 @@ def test_golden_values_match_reference_model():
         assert result["outcome_c"] == exp_c
 
 
-def test_fixed_mode_blends_each_item_with_its_own_values():
-    # fixed=True should give every row its OWN Score A / group_b scores to
-    # blend against, so Score A/B are unaffected and certainty should not
-    # depend on batch order or composition.
+def test_default_is_fixed_and_blends_each_item_with_its_own_values():
+    # The bug from KNOWN_ISSUES.md is fixed by default (fixed=True): every
+    # row gets its OWN Score A / group_b scores to blend against, matching
+    # what scoring it alone would give, regardless of batch order/composition.
     model = Model.load(MODEL_PATH)
     rows = _load_rows()
     item_ids = [row.pop("item_id") for row in rows]
     answer_rows = [{k: v for k, v in row.items() if v != ""} for row in rows]
 
-    fixed_results = evaluate_batch(model, answer_rows, fixed=True)
+    default_results = evaluate_batch(model, answer_rows)
     solo_results = [evaluate(model, answers) for answers in answer_rows]
 
-    for item_id, fixed_r, solo_r in zip(item_ids, fixed_results, solo_results):
-        assert math.isclose(fixed_r["score_a"], solo_r["score_a"], rel_tol=1e-9)
-        assert math.isclose(fixed_r["score_b"], solo_r["score_b"], rel_tol=1e-9)
-        assert fixed_r["outcome_c"] == solo_r["outcome_c"]
-        assert math.isclose(fixed_r["certainty"], solo_r["certainty"], rel_tol=1e-9)
+    for item_id, default_r, solo_r in zip(item_ids, default_results, solo_results):
+        assert math.isclose(default_r["score_a"], solo_r["score_a"], rel_tol=1e-9)
+        assert math.isclose(default_r["score_b"], solo_r["score_b"], rel_tol=1e-9)
+        assert default_r["outcome_c"] == solo_r["outcome_c"]
+        assert math.isclose(default_r["certainty"], solo_r["certainty"], rel_tol=1e-9)
 
 
 def test_blank_answers_do_not_crash():

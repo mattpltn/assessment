@@ -338,11 +338,12 @@ function scoreOne(model, answers) {
   return { fieldScores, groupAScores, groupBScores, groupDScores, scoreA: a, scoreB: b };
 }
 
-// See KNOWN_ISSUES.md: by default this reproduces the reference model's
-// batch-order-dependent quirk rather than fixing it. Pass
-// { useOwnBlend: true } to get the corrected behavior instead -- each item
-// blended against its own Score A / group_b scores, not a sort position.
-function evaluateBatch(model, answerRows, { useOwnBlend = false } = {}) {
+// See KNOWN_ISSUES.md: this used to inherit a batch-order-dependent bug
+// from the reference model. Fixed by default -- each item is blended
+// against its own Score A / group_b scores. Pass { useOwnBlend: false } to
+// reproduce the original (buggy) reference-model behavior instead, e.g.
+// for side-by-side comparison.
+function evaluateBatch(model, answerRows, { useOwnBlend = true } = {}) {
   const items = answerRows.map((answers) => scoreOne(model, answers));
 
   let blendSource;
