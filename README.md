@@ -1,5 +1,7 @@
 # Weighted Scorecard
 
+Live demo: **https://mattpltn.github.io/assessment/**
+
 Turns a CSV of per-item answers into three outputs:
 
 - **Score A** -- a 0-4 weighted-average readiness-style score.
@@ -22,14 +24,22 @@ reproduce the original behavior for comparison.
 ## Structure
 
 ```
-model/model.json       weight tables + per-field scoring formulas (the data)
-src/scoring/           the scoring pipeline (the code)
-  interpreter.py          tiny evaluator for the formula mini-language
-  model.py                loads model.json
-  pipeline.py             normalize -> group scores -> Score A/B -> Outcome C
-scripts/run.py         CLI: CSV in, CSV out
-tests/                 golden-value tests + a verified sample CSV
-docs/                  static web demo (same logic, ported to JS)
+model/model.json             weight tables + per-field scoring formulas (the data)
+src/scoring/                 the scoring pipeline (the code)
+  interpreter.py                tiny evaluator for the formula mini-language
+  model.py                      loads model.json
+  pipeline.py                   normalize -> group scores -> Score A/B -> Outcome C
+  counterfactual.py             minimal-change search for a target Outcome C
+scripts/
+  run.py                        CLI: CSV in, CSV out
+  counterfactual.py             CLI: minimal-change search
+tests/                        golden-value tests + a verified sample CSV
+docs/                         static web demo (same logic, ported to JS)
+  index.html                    the page
+  scoring.js                    pipeline, ported
+  counterfactual.js             minimal-change search, ported
+  kobo.js / kobo_map.json       raw survey-export ingestion (see below)
+KNOWN_ISSUES.md               resolved-issue writeup: the Outcome C batch-order bug
 ```
 
 ## CSV format
@@ -64,6 +74,13 @@ changes to stay fast) and stopping at the first depth with any solution.
 Prints every minimal solution found at that depth, each with the exact
 field, old/new answer, and old/new score. See
 [`src/scoring/counterfactual.py`](src/scoring/counterfactual.py).
+
+Depth 1 is always exact (every possible single change is tried). Depth 2+
+narrows the search to the `beam_width` most individually-impactful changes
+rather than trying every combination, to stay fast -- for the one case
+this was checked against, an exhaustive (non-beam) search confirmed the
+beam result was a genuine minimum, but that isn't a guarantee for every
+input. Raising `--beam-width` trades speed for a more thorough search.
 
 ## Tests
 
