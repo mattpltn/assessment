@@ -66,7 +66,7 @@
 <body>
 <main>
   <h1>Weighted Scorecard Demo</h1>
-  <p class="lede">Upload a CSV of item answers (columns <code>item_id, Q01..Q69</code>) and get Score&nbsp;A, Score&nbsp;B, and Outcome&nbsp;C for every row.</p>
+  <p class="lede">Upload a CSV of item answers -- either the plain <code>item_id, Q01..Q69</code> shape, or a raw survey-tool export -- and get Score&nbsp;A, Score&nbsp;B, and Outcome&nbsp;C for every row.</p>
 
   <div class="panel">
     <input type="file" id="file-input" accept=".csv" />
@@ -83,12 +83,15 @@
     </table>
   </div>
 
+  <div class="panel" id="note-panel" style="display:none; color: var(--muted); font-size: 0.85rem;"></div>
   <div class="panel error" id="error-panel" style="display:none;"></div>
 </main>
 
 <script src="scoring.js"></script>
+<script src="kobo.js"></script>
 <script>
 let model = null;
+let koboMap = null;
 
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/);
@@ -103,6 +106,12 @@ function parseCsv(text) {
 
 function showError(message) {
   const panel = document.getElementById("error-panel");
+  panel.style.display = message ? "block" : "none";
+  panel.textContent = message || "";
+}
+
+function showNote(message) {
+  const panel = document.getElementById("note-panel");
   panel.style.display = message ? "block" : "none";
   panel.textContent = message || "";
 }
@@ -122,14 +131,35 @@ function renderResults(itemIds, results) {
 
 function runCsv(text) {
   try {
-    const rows = parseCsv(text);
-    const itemIds = rows.map((r) => r.item_id || "");
-    const answerRows = rows.map((r) => {
-      const { item_id, ...rest } = r;
-      const cleaned = {};
-      for (const [k, v] of Object.entries(rest)) if (v !== "") cleaned[k] = v;
-      return cleaned;
-    });
+    showNote("");
+    const firstLine = text.split(/\r?\n/)[0];
+    const isRawExport = Kobo.looksLikeRawExport(firstLine.split(/[,;]/));
+
+    let itemIds, answerRows;
+    if (isRawExport) {
+      if (!koboMap) throw new Error("kobo_map.json not loaded yet -- try again in a moment");
+      const converted = Kobo.convertRawExport(text, koboMap);
+      itemIds = converted.itemIds;
+      answerRows = converted.answerRows;
+      if (converted.unmatched.length) {
+        showNote(
+          `Detected a raw survey-tool export. ${converted.unmatched.length} answer(s) didn't match a known option and were left blank (same as the reference model would do): ` +
+            converted.unmatched.map((u) => `${u.itemId}/${u.koboId}="${u.value}"`).join(", ")
+        );
+      } else {
+        showNote("Detected a raw survey-tool export and converted it automatically.");
+      }
+    } else {
+      const rows = parseCsv(text);
+      itemIds = rows.map((r) => r.item_id || "");
+      answerRows = rows.map((r) => {
+        const { item_id, ...rest } = r;
+        const cleaned = {};
+        for (const [k, v] of Object.entries(rest)) if (v !== "") cleaned[k] = v;
+        return cleaned;
+      });
+    }
+
     const results = Scoring.evaluateBatch(model, answerRows);
     renderResults(itemIds, results);
   } catch (e) {
@@ -137,12 +167,12 @@ function runCsv(text) {
   }
 }
 
-fetch("model.json")
-  .then((r) => r.json())
-  .then((raw) => {
-    model = Scoring.buildModel(raw);
+Promise.all([fetch("model.json").then((r) => r.json()), fetch("kobo_map.json").then((r) => r.json())])
+  .then(([rawModel, rawKoboMap]) => {
+    model = Scoring.buildModel(rawModel);
+    koboMap = rawKoboMap;
   })
-  .catch((e) => showError("Could not load model.json: " + e));
+  .catch((e) => showError("Could not load model: " + e));
 
 document.getElementById("file-input").addEventListener("change", (ev) => {
   const file = ev.target.files[0];

@@ -66,3 +66,17 @@ same pipeline to the browser (fetches `docs/model.json`, no backend). Open
 `docs/index.html` directly, or serve the repo root with GitHub Pages
 (Settings -> Pages -> Deploy from branch -> `main` / `/docs`) and use the
 "Try sample data" button or upload your own CSV.
+
+The page also accepts a raw survey-tool export directly -- semicolon- or
+comma-delimited, quoted fields, the tool's own bookkeeping columns
+(`_id`, `_uuid`, `__version__`, ...), original field codes rather than
+`Q01..Q69`. `docs/kobo.js` auto-detects this shape and converts it in the
+browser before scoring, using the field-code and option-label lookup table
+in `docs/kobo_map.json`.
+
+**Note:** `docs/kobo_map.json` contains the real-world field names and
+answer-option wording needed to recognize those raw answers. This was a
+deliberate, explicit choice to prioritize one-upload convenience over
+keeping that wording out of the public page -- everywhere else in this
+repo (`model/model.json`, the CSV format above, Score A/B/Outcome C
+themselves) stays fully anonymized.
