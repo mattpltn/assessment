@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scoring import Model
+from scoring import Model, find_min_changes
 from scoring.pipeline import evaluate, evaluate_batch
 
 FIXTURES = Path(__file__).parent / "fixtures_input.csv"
@@ -61,6 +61,29 @@ def test_default_is_fixed_and_blends_each_item_with_its_own_values():
         assert math.isclose(default_r["score_b"], solo_r["score_b"], rel_tol=1e-9)
         assert default_r["outcome_c"] == solo_r["outcome_c"]
         assert math.isclose(default_r["certainty"], solo_r["certainty"], rel_tol=1e-9)
+
+
+def test_find_min_changes_solution_actually_flips_outcome():
+    model = Model.load(MODEL_PATH)
+    rows = _load_rows()
+    row = next(r for r in rows if r["item_id"] == "item1")
+    row.pop("item_id")
+    answers = {k: v for k, v in row.items() if v != ""}
+
+    baseline = evaluate(model, answers)
+    assert baseline["outcome_c"] == "Option 2"
+
+    result = find_min_changes(model, answers, target_option="Option 1", max_depth=3, beam_width=25)
+    assert result["depth"] is not None
+    assert result["solutions"]
+
+    # Every reported solution must actually flip the outcome when applied.
+    for sol in result["solutions"][:3]:
+        trial = dict(answers)
+        for fid, _old, new, _old_score, _new_score in sol:
+            trial[fid] = new
+        assert evaluate(model, trial)["outcome_c"] == "Option 1"
+        assert len(sol) == result["depth"]
 
 
 def test_blank_answers_do_not_crash():

@@ -51,6 +51,20 @@ python3 -m venv .venv && .venv/bin/pip install -e .   # or just add src/ to PYTH
 
 Outputs a CSV with `item_id, score_a, score_b, outcome_c, certainty`.
 
+## "What's the fastest way to flip this outcome?"
+
+```bash
+.venv/bin/python scripts/counterfactual.py tests/fixtures_input.csv --item item1 --target "Option 1"
+```
+
+Searches for the smallest set of answer changes that would flip a given
+item's Outcome C to a target option, trying 1 change, then 2, then 3 (each
+exhaustive at depth 1; depth 2+ narrows to the most impactful single
+changes to stay fast) and stopping at the first depth with any solution.
+Prints every minimal solution found at that depth, each with the exact
+field, old/new answer, and old/new score. See
+[`src/scoring/counterfactual.py`](src/scoring/counterfactual.py).
+
 ## Tests
 
 ```bash
