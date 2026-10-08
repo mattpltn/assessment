@@ -1,0 +1,68 @@
+# Weighted Scorecard
+
+Turns a CSV of per-item answers into three outputs:
+
+- **Score A** -- a 0-4 weighted-average readiness-style score.
+- **Score B** -- a 0-100 weighted-average priority-style score (built in
+  part from Score A).
+- **Outcome C** -- one of six candidate categories (`Option 1`..`Option 6`),
+  picked by blending several weighted criteria groups and raw answers, plus
+  a `certainty` figure (how far ahead the winning option was).
+
+The whole thing is a static weighted multi-criteria scoring model -- no
+machine learning, nothing probabilistic. Every weight, formula, and
+threshold lives in [`model/model.json`](model/model.json) as data; the code
+just applies it.
+
+See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) for an important caveat about
+Outcome C.
+
+## Structure
+
+```
+model/model.json       weight tables + per-field scoring formulas (the data)
+src/scoring/           the scoring pipeline (the code)
+  interpreter.py          tiny evaluator for the formula mini-language
+  model.py                loads model.json
+  pipeline.py             normalize -> group scores -> Score A/B -> Outcome C
+scripts/run.py         CLI: CSV in, CSV out
+tests/                 golden-value tests + a verified sample CSV
+docs/                  static web demo (same logic, ported to JS)
+```
+
+## CSV format
+
+One row per item, one column per input field (`item_id, Q01, Q02, ... Q69`).
+Not every `Q` field is used in scoring -- some are free-text and ignored.
+Leave a cell blank if you don't have an answer; blank fields are simply
+excluded from any weighted average they would have contributed to.
+
+See [`tests/fixtures_input.csv`](tests/fixtures_input.csv) for a worked
+example (also used as the golden-value test fixture).
+
+## CLI
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e .   # or just add src/ to PYTHONPATH
+.venv/bin/python scripts/run.py tests/fixtures_input.csv
+```
+
+Outputs a CSV with `item_id, score_a, score_b, outcome_c, certainty`.
+
+## Tests
+
+```bash
+.venv/bin/pip install pytest
+.venv/bin/python -m pytest tests/
+```
+
+The golden-value test scores the bundled sample CSV and asserts the result
+matches the reference model's own cached output exactly.
+
+## Web demo
+
+`docs/index.html` + `docs/scoring.js` are a dependency-free port of the
+same pipeline to the browser (fetches `docs/model.json`, no backend). Open
+`docs/index.html` directly, or serve the repo root with GitHub Pages
+(Settings -> Pages -> Deploy from branch -> `main` / `/docs`) and use the
+"Try sample data" button or upload your own CSV.
