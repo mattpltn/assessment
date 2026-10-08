@@ -25,6 +25,10 @@ def main() -> None:
     with open(args.input_csv, newline="") as f:
         rows = list(csv.DictReader(f))
 
+    # Drop rows with no item_id -- e.g. unused pre-built formula rows in a
+    # spreadsheet export that still produce an empty CSV line.
+    rows = [row for row in rows if row.get("item_id", "").strip()]
+
     item_ids = [row.get("item_id", "") for row in rows]
     answer_rows = [{k: v for k, v in row.items() if k != "item_id" and v != ""} for row in rows]
     # Outcome C is intentionally batch-order-dependent -- see KNOWN_ISSUES.md --

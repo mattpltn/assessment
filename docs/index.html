@@ -160,6 +160,19 @@ function runCsv(text) {
       });
     }
 
+    // Drop rows with no item_id -- e.g. unused pre-built formula rows in a
+    // spreadsheet export that still produce an empty CSV line.
+    const kept = itemIds
+      .map((id, i) => ({ id, answers: answerRows[i] }))
+      .filter((x) => x.id && x.id.trim() !== "");
+    itemIds = kept.map((x) => x.id);
+    answerRows = kept.map((x) => x.answers);
+
+    if (itemIds.length === 0) {
+      showError("No rows with an item_id were found in this file.");
+      return;
+    }
+
     const results = Scoring.evaluateBatch(model, answerRows);
     renderResults(itemIds, results);
   } catch (e) {
