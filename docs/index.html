@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Weighted Scorecard Demo</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2e38;
+    --text: #e8e9ec;
+    --muted: #9aa0ab;
+    --accent: #5b8def;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --border: #e1e4e9;
+      --text: #1b1f27;
+      --muted: #666d7a;
+      --accent: #3461c1;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+  }
+  main { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p.lede { color: var(--muted); margin-top: 0; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  input[type="file"] { color: var(--text); }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  code { background: var(--border); padding: 1px 5px; border-radius: 4px; }
+  .error { color: #e5484d; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Weighted Scorecard Demo</h1>
+  <p class="lede">Upload your Kobo export (CSV with the <code>P01</code>&ndash;<code>P169</code> question columns) and get Score&nbsp;A, Score&nbsp;B, and Outcome&nbsp;C for every row.</p>
+
+  <div class="panel">
+    <input type="file" id="file-input" accept=".csv" />
+    <button class="secondary" id="sample-btn" type="button">Try sample data</button>
+    <a href="sample.csv" download style="margin-left: 8px; color: var(--muted); font-size: 0.85rem;">download sample.csv</a>
+  </div>
+
+  <div class="panel" id="results-panel" style="display:none;">
+    <strong>Results</strong>
+    <table id="results-table">
+      <thead>
+        <tr><th>item_id</th><th>Score A</th><th>Score B</th><th>Outcome C</th><th>certainty</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <button class="secondary" id="bugfix-btn" type="button" style="margin-top: 12px;">Compare to original Excel tool (pre-fix)</button>
+    <p style="color: var(--muted); font-size: 0.8rem; margin: 6px 0 0;">The table above already uses the fixed logic -- Outcome C is blended against each item's own Score A / Score B, not a batch-order-dependent sort position. See KNOWN_ISSUES.md for the full writeup. Click the button to see what the original, unfixed Excel tool would have produced for this same upload.</p>
+  </div>
+
+  <div class="panel" id="results-panel-2" style="display:none;">
+    <strong>Original Excel tool behavior (pre-fix, shown for reference)</strong>
+    <table id="results-table-2">
+      <thead>
+        <tr><th>item_id</th><th>Score A</th><th>Score B</th><th>Outcome C</th><th>certainty</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="panel" id="cf-panel" style="display:none;">
+    <strong>Fastest path to a different outcome</strong>
+    <p style="color: var(--muted); font-size: 0.8rem; margin: 6px 0 10px;">Pick an item and a target option to find the smallest set of answer changes that would flip Outcome C there.</p>
+    <label style="margin-right: 8px;">Item: <select id="cf-item"></select></label>
+    <label style="margin-right: 8px;">Target: <select id="cf-target"></select></label>
+    <button id="cf-run" type="button">Find minimal changes</button>
+    <div id="cf-output" style="margin-top: 12px; font-size: 0.9rem;"></div>
+  </div>
+
+  <div class="panel" id="note-panel" style="display:none; color: var(--muted); font-size: 0.85rem;"></div>
+  <div class="panel error" id="error-panel" style="display:none;"></div>
+</main>
+
+<script src="scoring.js"></script>
+<script src="kobo.js"></script>
+<script src="counterfactual.js"></script>
+<script>
+let model = null;
+let koboMap = null;
+let lastItemIds = null;
+let lastAnswerRows = null;
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines[0].split(",");
+  return lines.slice(1).map((line) => {
+    const cells = line.split(",");
+    const row = {};
+    header.forEach((h, i) => (row[h] = cells[i] ?? ""));
+    return row;
+  });
+}
+
+// The scoring engine uses internal field/option codes; show the form's own
+// P question numbers and real answer text instead.
+function questionNumber(fid) {
+  const f = koboMap && koboMap.fields.find((x) => x.id === fid);
+  return f ? f.kobo_id : fid;
+}
+
+function answerText(fid, raw) {
+  const f = koboMap && koboMap.fields.find((x) => x.id === fid);
+  const m = /^opt(\d+)$/.exec(String(raw));
+  if (f && f.options && m) return f.options[Number(m[1]) - 1] ?? raw;
+  return raw;
+}
+
+function showError(message) {
+  const panel = document.getElementById("error-panel");
+  panel.style.display = message ? "block" : "none";
+  panel.textContent = message || "";
+}
+
+function showNote(message) {
+  const panel = document.getElementById("note-panel");
+  panel.style.display = message ? "block" : "none";
+  panel.textContent = message || "";
+}
+
+function renderResults(itemIds, results) {
+  showError("");
+  const tbody = document.querySelector("#results-table tbody");
+  tbody.innerHTML = "";
+  itemIds.forEach((id, i) => {
+    const r = results[i];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${id}</td><td>${r.scoreA.toFixed(3)}</td><td>${r.scoreB.toFixed(3)}</td><td>${r.outcomeC}</td><td>${r.certainty.toFixed(3)}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("results-panel").style.display = "block";
+  // A fresh run invalidates any bug-fixed comparison table / counterfactual
+  // search results from before.
+  document.getElementById("results-panel-2").style.display = "none";
+  populateCfControls(itemIds);
+}
+
+function populateCfControls(itemIds) {
+  const itemSel = document.getElementById("cf-item");
+  itemSel.innerHTML = itemIds.map((id) => `<option value="${id}">${id}</option>`).join("");
+
+  const targetSel = document.getElementById("cf-target");
+  targetSel.innerHTML = model.options.map((o) => `<option value="${o.id}">${o.id}</option>`).join("");
+
+  document.getElementById("cf-output").innerHTML = "";
+  document.getElementById("cf-panel").style.display = "block";
+}
+
+function renderComparisonResults(itemIds, results) {
+  const tbody = document.querySelector("#results-table-2 tbody");
+  tbody.innerHTML = "";
+  itemIds.forEach((id, i) => {
+    const r = results[i];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${id}</td><td>${r.scoreA.toFixed(3)}</td><td>${r.scoreB.toFixed(3)}</td><td>${r.outcomeC}</td><td>${r.certainty.toFixed(3)}</td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("results-panel-2").style.display = "block";
+}
+
+function runCsv(text) {
+  try {
+    showNote("");
+    const firstLine = text.split(/\r?\n/)[0];
+    const isRawExport = Kobo.looksLikeRawExport(firstLine.split(/[,;]/));
+
+    let itemIds, answerRows;
+    if (isRawExport) {
+      if (!koboMap) throw new Error("kobo_map.json not loaded yet -- try again in a moment");
+      const converted = Kobo.convertRawExport(text, koboMap);
+      itemIds = converted.itemIds;
+      answerRows = converted.answerRows;
+      if (converted.unmatched.length) {
+        showNote(
+          `Detected a raw survey-tool export. ${converted.unmatched.length} answer(s) didn't match a known option and were left blank (same as the reference model would do): ` +
+            converted.unmatched.map((u) => `${u.itemId}/${u.koboId}="${u.value}"`).join(", ")
+        );
+      } else {
+        showNote("Detected a raw survey-tool export and converted it automatically.");
+      }
+    } else {
+      const rows = parseCsv(text);
+      itemIds = rows.map((r) => r.item_id || "");
+      answerRows = rows.map((r) => {
+        const { item_id, ...rest } = r;
+        const cleaned = {};
+        for (const [k, v] of Object.entries(rest)) if (v !== "") cleaned[k] = v;
+        return cleaned;
+      });
+    }
+
+    // Drop rows with no item_id -- e.g. unused pre-built formula rows in a
+    // spreadsheet export that still produce an empty CSV line.
+    const kept = itemIds
+      .map((id, i) => ({ id, answers: answerRows[i] }))
+      .filter((x) => x.id && x.id.trim() !== "");
+    itemIds = kept.map((x) => x.id);
+    answerRows = kept.map((x) => x.answers);
+
+    if (itemIds.length === 0) {
+      showError("No rows with an item_id were found in this file.");
+      return;
+    }
+
+    const results = Scoring.evaluateBatch(model, answerRows);
+    lastItemIds = itemIds;
+    lastAnswerRows = answerRows;
+    renderResults(itemIds, results);
+  } catch (e) {
+    showError(String(e.message || e));
+  }
+}
+
+Promise.all([fetch("model.json").then((r) => r.json()), fetch("kobo_map.json").then((r) => r.json())])
+  .then(([rawModel, rawKoboMap]) => {
+    model = Scoring.buildModel(rawModel);
+    koboMap = rawKoboMap;
+  })
+  .catch((e) => showError("Could not load model: " + e));
+
+document.getElementById("file-input").addEventListener("change", (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  file.text().then(runCsv);
+});
+
+document.getElementById("sample-btn").addEventListener("click", () => {
+  fetch("sample.csv")
+    .then((r) => r.text())
+    .then(runCsv)
+    .catch((e) => showError("Could not load sample.csv: " + e));
+});
+
+document.getElementById("bugfix-btn").addEventListener("click", () => {
+  if (!lastAnswerRows) {
+    showError("Run a scoring first, then click Compare to see the original behavior.");
+    return;
+  }
+  const originalResults = Scoring.evaluateBatch(model, lastAnswerRows, { useOwnBlend: false });
+  renderComparisonResults(lastItemIds, originalResults);
+});
+
+document.getElementById("cf-run").addEventListener("click", () => {
+  const itemId = document.getElementById("cf-item").value;
+  const targetOption = document.getElementById("cf-target").value;
+  const output = document.getElementById("cf-output");
+  const idx = lastItemIds.indexOf(itemId);
+  if (idx === -1) {
+    output.innerHTML = `<span class="error">Item not found.</span>`;
+    return;
+  }
+
+  output.textContent = "Searching...";
+  setTimeout(() => {
+    const answers = lastAnswerRows[idx];
+    const result = Counterfactual.findMinChanges(model, answers, targetOption, 3, 25);
+
+    if (result.depth === 0) {
+      output.innerHTML = `<em>${itemId} is already at ${targetOption}.</em>`;
+      return;
+    }
+    if (result.depth === null) {
+      output.innerHTML = `<em>${result.message}</em>`;
+      return;
+    }
+
+    const rows = result.solutions
+      .map(
+        (sol, i) =>
+          `<tr><td>${i + 1}</td><td>` +
+          sol
+            .map(
+              (c) =>
+                `${questionNumber(c.fid)}: ${JSON.stringify(answerText(c.fid, c.oldRaw))}&rarr;${JSON.stringify(answerText(c.fid, c.newRaw))} (${c.oldScore}&rarr;${c.newScore})`
+            )
+            .join("<br>") +
+          `</td></tr>`
+      )
+      .join("");
+    output.innerHTML =
+      `<p><strong>Minimum changes needed: ${result.depth}</strong> (${result.solutions.length} way(s) found)</p>` +
+      `<table><thead><tr><th>#</th><th>Change(s)</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }, 10);
+});
+</script>
+</body>
+</html>
